@@ -1,19 +1,33 @@
 import TelegramBot from "node-telegram-bot-api";
 import axios from "axios";
 import dotenv from "dotenv";
-import express from "express";  // ← NEW
+import express from "express";
 
 dotenv.config();
 
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+const TOKEN = process.env.BOT_TOKEN;
+const API_KEY = process.env.API_KEY;
+const URL = process.env.RENDER_URL; // <-- ADD THIS IN RENDER ENV
 
-// 📞 Function to get phone info
+const app = express();
+app.use(express.json());
+
+// Create bot WITHOUT polling
+const bot = new TelegramBot(TOKEN);
+
+// --- TELEGRAM WEBHOOK ENDPOINT ----
+app.post(`/webhook/${TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body); // Pass update to bot
+  res.sendStatus(200);
+});
+
+// --- PHONE INFO FUNCTION ---
 async function getPhoneInfo(phone) {
   try {
     const response = await axios.get(
       `https://api.apilayer.com/number_verification/validate?number=${phone}`,
       {
-        headers: { apikey: process.env.API_KEY },
+        headers: { apikey: API_KEY },
       }
     );
 
@@ -28,32 +42,25 @@ async function getPhoneInfo(phone) {
       carrier: data.carrier || "Unknown",
     };
   } catch (err) {
-    console.error("API Error:", err.message);
     return { error: "⚠️ Unable to fetch info at the moment." };
   }
 }
 
+// --- BOT COMMANDS ---
 bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text?.trim();
 
   if (!text) return;
 
-  // 🟢 /start command
   if (text === "/start") {
     return bot.sendMessage(
       chatId,
-      `
-👋 *Welcome to PhoneInfo Bot!*
-Send me any phone number (with country code) to get details.
-
-Example: \`+919876543210\`
-`,
+      `👋 *Welcome to PhoneInfo Bot!*\nSend me any phone number (with country code).\nExample: \`+919876543210\``,
       { parse_mode: "Markdown" }
     );
   }
 
-  // Check if valid number
   const phoneRegex = /^\+?\d{7,15}$/;
   if (!phoneRegex.test(text)) {
     return bot.sendMessage(
@@ -62,15 +69,13 @@ Example: \`+919876543210\`
     );
   }
 
-  bot.sendMessage(chatId, "🔍 Fetching info... Please wait...");
+  bot.sendMessage(chatId, "🔍 Fetching info...");
 
-  // Get phone info
   const info = await getPhoneInfo(text);
   if (info.error) return bot.sendMessage(chatId, info.error);
 
   const digits = text.replace(/\D/g, "");
 
-  // 🧾 Format message
   const message = `
 📞 *Number:* ${text}
 🌍 *Country:* ${info.country}
@@ -78,11 +83,10 @@ Example: \`+919876543210\`
 📡 *Carrier:* ${info.carrier}
 
 🔗 *Quick Links:*
-- [💬 WhatsApp Chat](https://wa.me/${digits})
-- [🔎 Search on Telegram](https://t.me/+${digits})
+- [WhatsApp](https://wa.me/${digits})
+- [Telegram](https://t.me/+${digits})
 `;
 
-  // 🧩 Send message with inline buttons
   bot.sendMessage(chatId, message, {
     parse_mode: "Markdown",
     reply_markup: {
@@ -96,19 +100,16 @@ Example: \`+919876543210\`
   });
 });
 
-console.log("✅ Phone Info Bot is running...");
+// --- START WEBHOOK + SERVER ---
+app.listen(3000, async () => {
+  console.log("🚀 Server running on port 3000");
 
+  const webhookUrl = `${URL}/webhook/${TOKEN}`;
 
-// ----------------------
-// 🚀 EXPRESS SERVER (required for Cyclic.sh)
-// ----------------------
-
-const app = express();
-
-app.get("/", (req, res) => {
-  res.send("PhoneInfo Bot is running on Cyclic! 🚀");
-});
-
-app.listen(3000, () => {
-  console.log("🌐 Express server running on port 3000");
+  try {
+    await bot.setWebHook(webhookUrl);
+    console.log("✅ Webhook set to:", webhookUrl);
+  } catch (error) {
+    console.error("❌ Failed to set webhook:", error.message);
+  }
 });
