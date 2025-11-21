@@ -1,6 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import axios from "axios";
 import dotenv from "dotenv";
+import express from "express";  // ← NEW
 
 dotenv.config();
 
@@ -96,3 +97,18 @@ Example: \`+919876543210\`
 });
 
 console.log("✅ Phone Info Bot is running...");
+
+
+// ----------------------
+// 🚀 EXPRESS SERVER (required for Cyclic.sh)
+// ----------------------
+
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("PhoneInfo Bot is running on Cyclic! 🚀");
+});
+
+app.listen(3000, () => {
+  console.log("🌐 Express server running on port 3000");
+});
