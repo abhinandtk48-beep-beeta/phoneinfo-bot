@@ -5,29 +5,18 @@ import express from "express";
 
 dotenv.config();
 
-const TOKEN = process.env.BOT_TOKEN;
-const API_KEY = process.env.API_KEY;
-const URL = process.env.RENDER_URL; // <-- ADD THIS IN RENDER ENV
+// Create bot WITH polling (works on Render free tier)
+const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
-const app = express();
-app.use(express.json());
-
-// Create bot WITHOUT polling
-const bot = new TelegramBot(TOKEN);
-
-// --- TELEGRAM WEBHOOK ENDPOINT ----
-app.post(`/webhook/${TOKEN}`, (req, res) => {
-  bot.processUpdate(req.body); // Pass update to bot
-  res.sendStatus(200);
-});
-
-// --- PHONE INFO FUNCTION ---
+// ----------------------
+// PHONE INFO FUNCTION
+// ----------------------
 async function getPhoneInfo(phone) {
   try {
     const response = await axios.get(
       `https://api.apilayer.com/number_verification/validate?number=${phone}`,
       {
-        headers: { apikey: API_KEY },
+        headers: { apikey: process.env.API_KEY },
       }
     );
 
@@ -42,11 +31,14 @@ async function getPhoneInfo(phone) {
       carrier: data.carrier || "Unknown",
     };
   } catch (err) {
+    console.error("API Error:", err.message);
     return { error: "⚠️ Unable to fetch info at the moment." };
   }
 }
 
-// --- BOT COMMANDS ---
+// ----------------------
+// BOT MESSAGES
+// ----------------------
 bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text?.trim();
@@ -56,7 +48,12 @@ bot.on("message", async (msg) => {
   if (text === "/start") {
     return bot.sendMessage(
       chatId,
-      `👋 *Welcome to PhoneInfo Bot!*\nSend me any phone number (with country code).\nExample: \`+919876543210\``,
+      `
+👋 *Welcome to PhoneInfo Bot!*
+Send me any phone number (with country code).
+
+Example: \`+919876543210\`
+`,
       { parse_mode: "Markdown" }
     );
   }
@@ -69,7 +66,7 @@ bot.on("message", async (msg) => {
     );
   }
 
-  bot.sendMessage(chatId, "🔍 Fetching info...");
+  bot.sendMessage(chatId, "🔍 Fetching info... Please wait...");
 
   const info = await getPhoneInfo(text);
   if (info.error) return bot.sendMessage(chatId, info.error);
@@ -83,8 +80,8 @@ bot.on("message", async (msg) => {
 📡 *Carrier:* ${info.carrier}
 
 🔗 *Quick Links:*
-- [WhatsApp](https://wa.me/${digits})
-- [Telegram](https://t.me/+${digits})
+- [💬 WhatsApp Chat](https://wa.me/${digits})
+- [🔎 Search on Telegram](https://t.me/+${digits})
 `;
 
   bot.sendMessage(chatId, message, {
@@ -100,16 +97,18 @@ bot.on("message", async (msg) => {
   });
 });
 
-// --- START WEBHOOK + SERVER ---
-app.listen(3000, async () => {
-  console.log("🚀 Server running on port 3000");
+console.log("✅ Phone Info Bot is running...");
 
-  const webhookUrl = `${URL}/webhook/${TOKEN}`;
+// ----------------------
+// EXPRESS SERVER FOR RENDER
+// ----------------------
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-  try {
-    await bot.setWebHook(webhookUrl);
-    console.log("✅ Webhook set to:", webhookUrl);
-  } catch (error) {
-    console.error("❌ Failed to set webhook:", error.message);
-  }
+app.get("/", (req, res) => {
+  res.send("PhoneInfo Bot is running on Render! 🚀");
+});
+
+app.listen(PORT, () => {
+  console.log("🌐 Express server running on port " + PORT);
 });
